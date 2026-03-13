@@ -1,0 +1,188 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ===============================
+// ENUMS
+// ===============================
+
+enum SessionStatus {
+  PENDING
+  RUNNING
+  PAUSED
+  FINISHED
+  CANCELLED
+}
+
+
+// ===============================
+// SESSION (réunion réelle)
+// ===============================
+
+model Session {
+  id            String   @id @default(cuid())
+  title         String
+  description   String?
+
+  date          DateTime @default(now())
+  status        SessionStatus @default(PENDING)
+
+  // caches pour rapport rapide
+  totalPlanned  Int?   // secondes
+  totalActual   Int?
+  totalDiff     Int?
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  programme     ProgrammeItem[]
+  passages      Passage[]
+
+  @@index([date])
+}
+
+
+// ===============================
+// INTERVENANT (personne/groupe)
+// ===============================
+
+model Intervenant {
+  id        String @id @default(cuid())
+  name      String
+  role      String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  passages  Passage[]
+  stats     IntervenantStats? // ← FIX 2 : relation opposée ajoutée
+
+  @@index([name])
+}
+
+
+// ===============================
+// PROGRAMME (planning prévu)
+// ===============================
+
+model ProgrammeItem {
+  id            String @id @default(cuid())
+
+  sessionId     String
+  session       Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  label         String        // texte affiché (Alpha, Pause, Capsule…)
+  role          String?
+
+  order         Int
+  plannedTime   Int           // secondes (Général/Max)
+  
+  timeMin       Int?          // secondes (Vert)
+  timeMed       Int?          // secondes (Jaune)
+  timeMax       Int?          // secondes (Rouge)
+
+  createdAt     DateTime @default(now())
+
+  passage       Passage?
+
+  @@index([sessionId])
+  @@index([order])
+}
+
+
+// ===============================
+// PASSAGE (temps réel mesuré)
+// ===============================
+
+model Passage {
+  id            String @id @default(cuid())
+
+  sessionId     String
+  session       Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  programmeId   String? @unique // ← FIX 1 : @unique pour relation one-to-one
+  programme     ProgrammeItem? @relation(fields: [programmeId], references: [id])
+
+  intervenantId String?
+  intervenant   Intervenant? @relation(fields: [intervenantId], references: [id])
+
+  order         Int
+
+  // prévu copié pour historique
+  plannedTime   Int
+
+  // réel
+  actualTime    Int @default(0)
+  diffTime      Int @default(0)
+
+  // seuils copiés pour historique
+  timeMin       Int?
+  timeMed       Int?
+  timeMax       Int?
+
+  startedAt     DateTime?
+  endedAt       DateTime?
+
+  createdAt     DateTime @default(now())
+
+  @@index([sessionId])
+  @@index([order])
+  @@index([intervenantId])
+}
+
+
+// ===============================
+// TEMPLATES (optionnel mais PRO)
+// Permet de réutiliser un programme
+// ===============================
+
+model TemplateSession {
+  id        String @id @default(cuid())
+  name      String
+
+  createdAt DateTime @default(now())
+
+  items     TemplateItem[]
+}
+
+model TemplateItem {
+  id            String @id @default(cuid())
+
+  templateId    String
+  template      TemplateSession @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  label         String
+  role          String?
+  order         Int
+  plannedTime   Int
+
+  @@index([templateId])
+  @@index([order])
+}
+
+
+// ===============================
+// STATISTIQUES PAR INTERVENANT
+// (facultatif mais très utile)
+// ===============================
+
+model IntervenantStats {
+  id             String @id @default(cuid())
+
+  intervenantId  String @unique
+  intervenant    Intervenant @relation(fields: [intervenantId], references: [id])
+
+  totalSessions  Int @default(0)
+  totalPlanned   Int @default(0)
+  totalActual    Int @default(0)
+  totalDiff      Int @default(0)
+
+  punctuality    Float @default(0) // score %
+
+  updatedAt      DateTime @updatedAt
+}
