@@ -166,6 +166,7 @@ export const sessionController = new Elysia({ prefix: "/sessions" })
             return {
                 order: p.order,
                 label: p.programme?.label || p.intervenant?.name || "Inconnu",
+                role: p.programme?.role || p.intervenant?.role || "",
                 plannedTime: p.plannedTime,
                 timeMin: p.timeMin,
                 timeMed: p.timeMed,
